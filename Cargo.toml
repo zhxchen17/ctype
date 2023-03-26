@@ -10,6 +10,7 @@ build = "build.rs"
 capnp = "0.15"
 lexpr = "0.2.6"
 once_cell = "1.16.0"
+typed-arena = "2.0.0"
 
 [build-dependencies]
 capnpc = "0.15"

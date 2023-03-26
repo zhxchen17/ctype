@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use lexpr::{sexp, Cons, Value};
 
 use crate::ast::{Ast, AstVisitor, Node, NodeId};
+use crate::def::{DefId, DefLocalId};
 use crate::error::{report_error, Error};
-use crate::hil::{DefId, DefLocalId, Hil, HilId};
+use crate::hil::{Hil, HilId};
 use crate::s_expr::{node_add_attr, node_get_attr, node_get_field};
 
 pub enum Resolution<Id> {
@@ -243,42 +244,73 @@ impl LoweringContext {
     }
 }
 
-pub fn lower_ast(ast: &Ast, ctx: &mut LoweringContext) -> Hil {
-    match ast {
-        Value::Cons(c) => {
-            let (car, cdr) = c.as_pair();
+struct AstLowering {
+    def_local_id: DefLocalId,
+}
 
-            let hil = if (*car == Value::symbol("Expr") || *car == Value::symbol("Ty"))
-                && node_get_attr(c, "kind").as_keyword() == Some("path")
-            {
-                let resolved =
-                    |k, r| Cons::new(car.clone(), sexp!((#:kind #:qpath (Path #:kind ,k ,r))));
-                match ctx.resolutions.get(&NodeId::new(c)).unwrap() {
-                    Resolution::Def(def_id) => resolved(Value::keyword("def"), def_id.to_s_expr()),
-                    Resolution::Local(node_id) => {
-                        resolved(Value::keyword("local"), ctx.hil_id(*node_id).s_expr())
+impl AstLowering {
+    fn run(&mut self, ast: &Ast, ctx: &mut LoweringContext) -> Hil {
+        match ast {
+            Value::Cons(c) => {
+                let (car, cdr) = c.as_pair();
+
+                let head = car.as_symbol().unwrap().to_string();
+                let def_local_id = if head == "Item"
+                    || head == "Decl"
+                    || head == "Binding"
+                    || head == "Variant"
+                    || head == "FieldDef"
+                {
+                    let d = Some(self.def_local_id);
+                    self.def_local_id = self.def_local_id.next();
+                    d
+                } else {
+                    None
+                };
+                let mut hil = if (head == "Expr" || head == "Ty")
+                    && node_get_attr(c, "kind").as_keyword() == Some("path")
+                {
+                    let resolved =
+                        |k, r| Cons::new(car.clone(), sexp!((#:kind #:qpath (Path #:kind ,k ,r))));
+                    match ctx.resolutions.get(&NodeId::new(c)).unwrap() {
+                        Resolution::Def(def_id) => {
+                            resolved(Value::keyword("def"), def_id.to_s_expr())
+                        }
+                        Resolution::Local(node_id) => {
+                            resolved(Value::keyword("local"), ctx.hil_id(*node_id).to_s_expr())
+                        }
                     }
+                } else {
+                    Cons::new(
+                        self.run(car, ctx),
+                        Value::list(
+                            cdr.list_iter()
+                                .unwrap()
+                                .map(|x| self.run(x, ctx))
+                                .collect::<Vec<Hil>>(),
+                        ),
+                    )
+                };
+
+                if def_local_id.is_some() {
+                    hil = node_add_attr(hil, "def_id", def_local_id.unwrap().to_s_expr());
                 }
-            } else {
-                Cons::new(
-                    lower_ast(car, ctx),
-                    Value::list(
-                        cdr.list_iter()
-                            .unwrap()
-                            .map(|x| lower_ast(x, ctx))
-                            .collect::<Vec<Hil>>(),
-                    ),
-                )
-            };
-            Value::Cons(node_add_attr(
-                hil,
-                "hil_id",
-                ctx.hil_id(NodeId::new(c)).s_expr(),
-            ))
+                if head != "Item" && head != "Unit" {
+                    hil = node_add_attr(hil, "hil_id", ctx.hil_id(NodeId::new(c)).to_s_expr());
+                }
+                Value::Cons(hil)
+            }
+            Value::Vector(v) => {
+                Value::vector(v.iter().map(|x| self.run(x, ctx)).collect::<Vec<Hil>>())
+            }
+            x => x.clone(),
         }
-        Value::Vector(v) => {
-            Value::vector(v.iter().map(|x| lower_ast(x, ctx)).collect::<Vec<Hil>>())
-        }
-        x => x.clone(),
     }
+}
+
+pub fn lower_ast(ast: &Ast, ctx: &mut LoweringContext) -> Hil {
+    let mut lowering = AstLowering {
+        def_local_id: DefLocalId::new(),
+    };
+    lowering.run(ast, ctx)
 }

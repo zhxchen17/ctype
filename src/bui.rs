@@ -17,7 +17,7 @@ impl BuiMessage {
     pub fn deserialize(&self) -> Bui {
         let reader = read_message(self.buffer.as_slice(), ReaderOptions::new()).unwrap();
         Bui {
-            reader: TypedReader::<_, bui_capnp::unit::Owned>::new(reader),
+            reader: Some(TypedReader::<_, bui_capnp::unit::Owned>::new(reader)),
         }
     }
 }
@@ -124,8 +124,8 @@ impl<'a> BuiItemRef<'a> {
         self.reader.get_unit()
     }
 
-    pub fn offset(&self) -> u32 {
-        self.reader.get_offset()
+    pub fn def(&self) -> u32 {
+        self.reader.get_def()
     }
 }
 
@@ -295,13 +295,19 @@ impl<'a> BuiItem<'a> {
 }
 
 pub struct Bui {
-    reader: TypedReader<OwnedSegments, bui_capnp::unit::Owned>,
+    reader: Option<TypedReader<OwnedSegments, bui_capnp::unit::Owned>>,
 }
 
 impl Bui {
+    pub fn empty() -> Self {
+        Bui { reader: None }
+    }
+
     pub fn items(&self) -> Vec<BuiItem> {
         let items = self
             .reader
+            .as_ref()
+            .unwrap()
             .get()
             .unwrap()
             .get_items()

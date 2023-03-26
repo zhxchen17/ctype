@@ -3,9 +3,13 @@ pub mod bui;
 pub mod bui_capnp {
     include!(concat!(env!("OUT_DIR"), "/bui_capnp.rs"));
 }
+pub mod context;
+mod def;
 mod error;
 pub mod hil;
 mod s_expr;
+pub mod t;
+pub mod til;
 
 #[cfg(test)]
 mod tests {
@@ -96,14 +100,33 @@ mod tests {
     }
 
     fn get_ast() -> Value {
+        // class Bar {}
+        // defn foo(x: Bar, y: Bar) -> Bar {
+        //   x;
+        //   y
+        // }
+        // interface iface {
+        //   type t = Bar;
+        //   defn f(z: Bar) -> Bar;
+        // }
+        // module mdl {
+        //   type t = Bar;
+        //   defn f(z: Bar) -> Bar {
+        //     z
+        //   }
+        // }
         sexp!(
-            (Unit
-             (Item #:ident Bar #:kind #:class (AdtData))
+            (Unit #:path #(test)
+             (Item #:ident Bar #:kind #:class
+              (Variant
+               (FieldDef)
+               (FieldDef)))
              (Item #:ident foo #:kind #:defn (Generics)
               (FnSig
                (FnDecl
                 #((Param x (Ty #:kind #:path #(Bar)))
-                  (Param y (Ty #:kind #:path #(Bar))))))
+                  (Param y (Ty #:kind #:path #(Bar))))
+                (FnRetTy (Ty #:kind #:path #(Bar)))))
               (Block
                (Stmt #:kind #:semi (Expr #:kind #:path #(x)))
                (Stmt #:kind #:expr (Expr #:kind #:path #(y)))))
@@ -116,7 +139,9 @@ mod tests {
               (Structure
                (Binding #:ident t #:kind #:ty (Ty #:kind #:path #(Bar)))
                (Binding #:ident f #:kind #:defn (Generics)
-                (FnSig (FnDecl #((Param z (Ty #:kind #:path #(Bar))))))
+                (FnSig (FnDecl
+                        #((Param z (Ty #:kind #:path #(Bar))))
+                        (FnRetTy (Ty #:kind #:path #(Bar)))))
                 (Block
                  (Stmt #:kind #:expr (Expr #:kind #:path #(z)))))))))
     }
@@ -130,38 +155,43 @@ mod tests {
             sexp_match(
                 &hil,
                 &sexp!(
-                   (Unit #:hil_id #:_
-                    (Item #:hil_id #:_ #:ident Bar #:kind #:class (AdtData #:hil_id #:_))
-                    (Item #:hil_id #:_ #:ident foo #:kind #:defn (Generics #:hil_id #:_)
+                   (Unit #:path #(test)
+                    (Item #:def_id 0 #:ident Bar #:kind #:class
+                     (Variant #:hil_id #:_ #:def_id 1
+                      (FieldDef #:hil_id #:_ #:def_id 2)
+                      (FieldDef #:hil_id #:_ #:def_id 3)))
+                    (Item #:def_id 4 #:ident foo #:kind #:defn (Generics #:hil_id #:_)
                      (FnSig #:hil_id #:_
                       (FnDecl #:hil_id #:_
                        #((Param #:hil_id #:_1 x
                           (Ty #:hil_id #:_ #:kind #:qpath (Path #:kind #:def (DefId 0 0))))
                          (Param #:hil_id #:_2 y
-                          (Ty #:hil_id #:_ #:kind #:qpath (Path #:kind #:def (DefId 0 0)))))))
+                          (Ty #:hil_id #:_ #:kind #:qpath (Path #:kind #:def (DefId 0 0)))))
+                       (FnRetTy #:hil_id #:_ (Ty #:hil_id #:_ #:kind #:qpath (Path #:kind #:def (DefId 0 0))))))
                      (Block #:hil_id #:_
                       (Stmt #:hil_id #:_ #:kind #:semi
                        (Expr #:hil_id #:_ #:kind #:qpath (Path #:kind #:local #:_1)))
                       (Stmt #:hil_id #:_ #:kind #:expr
                        (Expr #:hil_id #:_ #:kind #:qpath (Path #:kind #:local #:_2)))))
-                   (Item #:hil_id #:_ #:ident iface #:kind #:interface
+                   (Item #:def_id 5 #:ident iface #:kind #:interface
                     (Signature #:hil_id #:_
-                     (Decl #:hil_id #:_ #:ident t #:kind #:ty
+                     (Decl #:hil_id #:_ #:def_id 6 #:ident t #:kind #:ty
                       (Ty #:hil_id #:_ #:kind #:qpath (Path #:kind #:def (DefId 0 0))))
-                     (Decl #:hil_id #:_ #:ident f #:kind #:defn (Generics #:hil_id #:_)
+                     (Decl #:hil_id #:_ #:def_id 7 #:ident f #:kind #:defn (Generics #:hil_id #:_)
                       (FnSig #:hil_id #:_
                        (FnDecl #:hil_id #:_
                         #((Param #:hil_id #:_ z
                            (Ty #:hil_id #:_ #:kind #:qpath (Path #:kind #:def (DefId 0 0))))))))))
-                    (Item #:hil_id #:_ #:ident mdl #:kind #:module
+                    (Item #:def_id 8 #:ident mdl #:kind #:module
                      (Structure #:hil_id #:_
-                      (Binding #:hil_id #:_ #:ident t #:kind #:ty
+                      (Binding #:hil_id #:_ #:def_id 9 #:ident t #:kind #:ty
                        (Ty #:hil_id #:_ #:kind #:qpath (Path #:kind #:def (DefId 0 0))))
-                      (Binding #:hil_id #:_ #:ident f #:kind #:defn (Generics #:hil_id #:_)
+                      (Binding #:hil_id #:_ #:def_id 10 #:ident f #:kind #:defn (Generics #:hil_id #:_)
                        (FnSig #:hil_id #:_
                         (FnDecl #:hil_id #:_
                          #((Param #:hil_id #:_3 z
-                            (Ty #:hil_id #:_ #:kind #:qpath (Path #:kind #:def (DefId 0 0)))))))
+                            (Ty #:hil_id #:_ #:kind #:qpath (Path #:kind #:def (DefId 0 0)))))
+                         (FnRetTy #:hil_id #:_ (Ty #:hil_id #:_ #:kind #:qpath (Path #:kind #:def (DefId 0 0))))))
                        (Block #:hil_id #:_
                         (Stmt #:hil_id #:_ #:kind #:expr
                          (Expr #:hil_id #:_ #:kind #:qpath (Path #:kind #:local #:_3))))))))),
@@ -174,9 +204,11 @@ mod tests {
     fn test_hil_to_bui() {
         use crate::ast::to_hil;
         use crate::hil::to_bui;
+        use crate::context::GlobalContext;
         let ast = get_ast();
         let hil = to_hil(&ast);
-        let bui = to_bui(&hil).deserialize();
+        let ctx = GlobalContext::new();
+        let bui = to_bui(&hil, &ctx).deserialize();
         let items = bui.items();
         assert_eq!(items.len(), 4);
         assert_eq!(items[0].ident(), "Bar");
@@ -195,13 +227,13 @@ mod tests {
             assert!(ty.is_some());
             let t = ty.unwrap();
             assert_eq!(t.unit(), 0);
-            assert_eq!(t.offset(), 0);
+            assert_eq!(t.def(), 0);
 
             let ty = inputs[1].adt();
             assert!(ty.is_some());
             let t = ty.unwrap();
             assert_eq!(t.unit(), 0);
-            assert_eq!(t.offset(), 0);
+            assert_eq!(t.def(), 0);
         } else {
             assert!(false, "item 1 must be a defn.");
         }
@@ -217,7 +249,7 @@ mod tests {
             assert!(adt.is_some());
             let t = adt.unwrap();
             assert_eq!(t.unit(), 0);
-            assert_eq!(t.offset(), 0);
+            assert_eq!(t.def(), 0);
 
             assert_eq!(items_2.defns().len(), 1);
             let (ident, _) = items_2.defns()[0];
@@ -236,7 +268,7 @@ mod tests {
             assert!(adt.is_some());
             let t = adt.unwrap();
             assert_eq!(t.unit(), 0);
-            assert_eq!(t.offset(), 0);
+            assert_eq!(t.def(), 0);
 
             assert_eq!(items_3.defns().len(), 1);
             let (ident, _) = items_3.defns()[0];
@@ -245,5 +277,18 @@ mod tests {
         } else {
             assert!(false, "item 3 must be a module");
         }
+    }
+
+    #[test]
+    fn test_hil_to_til() {
+        use crate::ast::to_hil;
+        use crate::hil::to_til;
+        use crate::t::ty_check;
+        use crate::context::GlobalContext;
+        let ast = get_ast();
+        let hil = to_hil(&ast);
+        let ctx = GlobalContext::new();
+        let tctx = ty_check(&ctx, &hil);
+        let til = to_til(&hil, &ctx, &tctx);
     }
 }

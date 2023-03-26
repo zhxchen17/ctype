@@ -25,7 +25,7 @@ struct Kind {
 
 struct ItemRef {
   unit @0 :UInt16;
-  offset @1 :UInt32;
+  def @1 :UInt32;
 }
 
 struct Ty {
@@ -80,11 +80,12 @@ struct Module {
 struct Item {
   ident @0 :Text;
   namespace @1 :List(Text);
+  def @2: UInt32;
   kind :union {
-    interface @2 :Interface;
-    class @3 :Class;
-    defn @4 :Defn;
-    module @5 :Module;
+    interface @3 :Interface;
+    class @4 :Class;
+    defn @5 :Defn;
+    module @6 :Module;
   }
 }
 
